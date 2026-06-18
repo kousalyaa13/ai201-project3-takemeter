@@ -48,11 +48,8 @@ The genuinely ambiguous posts sit **between `theory` and `plot_question`** — a
 
 ## Data collection plan
 
-**Sources (in priority order):**
+**Sources:**
 - **r/Manifest (Reddit)** — primary source; richest mix of all three labels in episode-discussion and theory threads.
-- **X/Twitter (#Manifest)** — short, high-emotion posts; strongest source for `rant_rave`.
-- **Netflix / IMDb episode discussions & review comments** — episode recaps and confused-viewer comments; good for `plot_question`.
-- **Facebook fan groups** — casual viewers; supplements `plot_question` and `rant_rave`.
 
 **Target volume:** **200+ examples total, ~67 per label** to keep classes balanced for stratified splitting.
 

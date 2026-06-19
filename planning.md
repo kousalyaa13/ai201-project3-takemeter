@@ -1,91 +1,94 @@
 # TakeMeter — Planning Document
 
 **AI201 · Project 3**
-**Community:** the *Manifest* television-series fandom
-
-**Task:** classify fan posts into how the viewer is *engaging* with the show
+**Community:** the *Manifest* TV fandom
+**Task:** classify fan posts by how the viewer is engaging with the show
 
 ---
 
 ## Community
 
-I chose the ***Manifest* fandom** — the community of viewers who follow the NBC/Netflix mystery-drama about the passengers of Flight 828, who vanish and return 5½ years later with supernatural "Callings."
+I chose the *Manifest* fandom — fans of the NBC/Netflix mystery show about the passengers of Flight 828, who disappear and come back 5½ years later with visions called "Callings."
 
-This community is a good fit for a classification task because the show is built on an unresolved, serialized mystery, so the discourse splits cleanly into unique styles of engagement rather than just distinct topics. 
-
-The same episode produces (1) rigorous, evidence-based puzzle-solving, (2) raw emotional reactions to characters and relationships, and (3) confused viewers trying to catch up on the timeline. Those three modes look very different in tone, structure, and intent, which gives a classifier real signal to learn, but they also overlap at the edges (a theory can be emotional; a question can hint at a theory), which makes the problem genuinely interesting rather than trivially separable.
+This is a good community for a classification task because the whole show is one ongoing mystery, so fans engage in clearly different ways: some build detailed theories, some just react emotionally to characters, and some ask questions about things they missed. The three styles look different enough for a model to learn, but they overlap at the edges, which makes the task interesting instead of trivial.
 
 ---
 
 ## Labels
 
-I use **3 labels**, mirroring the `LABEL_MAP` in the notebook.
+I use 3 labels, matching the `LABEL_MAP` in the notebook.
 
 ### `theory`
-A post that lays out a **structured hypothesis or prediction** about the show's mysteries, supporting it with reasoning, evidence, or references to specific clues.
-- *Example 1:* "I think the Callings are the passengers' own future memories leaking backward — every Calling we've seen has later mapped to something the Death Date forces them to do. The driftwood and the sapphire are the mechanism."
-- *Example 2:* "Prediction: Angelina isn't the antagonist, she's a mirror of Cal. The sapphire amplifies intent, so the two of them are the 'two halves' the mythology keeps hinting at, and the finale will force them to choose together."
+A post that lays out a hypothesis or prediction about the show's mysteries.
+- "My theory is God wanted to test humanity and chose those in 828 as a sample set to decide whether to cause an apocalypse"
+- "the tail fin teleported to the ocean because Saanvi killed the Major."
 
 ### `rant_rave`
-A post that is primarily an **emotional reaction** — praising or criticizing a character, relationship, or plot point — with little or no analytical claim.
-- *Example 1:* "I cannot STAND how they wrote Michaela this season. Every decision she makes is infuriating and the Zeke storyline broke my heart for nothing."
-- *Example 2:* "Ben and Saanvi carrying this entire show on their backs 😭 the scene in the lab was everything, best episode they've ever done, I'm obsessed."
+A post that is mainly an emotional reaction — liking or disliking a character, relationship, or plot point.
+- "I LOVED Eagan, he was easily the best character on the show"
+- "This show is so freaking bland and Grace is so annoying that I couldn't even finish season 2."
 
 ### `plot_question`
-A **factual question** about something the viewer missed or found confusing in the timeline, characters, or events — seeking an answer, not offering a theory.
-- *Example 1:* "Wait, how long was Cal actually gone before he came back older? I lost track of the timeline after the season 3 jump."
-- *Example 2:* "Who was the guy in the tattoo parlor again, and is he the same person Michaela saw at the end of episode 4? I'm confused."
+A factual question about something the viewer missed or found confusing.
+- "Why did Cal age when he was gone?"
+- "Who shot Grace? I rewatched and still can't tell who was holding the gun."
 
 ---
 
 ## Hard edge cases
 
-The genuinely ambiguous posts sit **between `theory` and `plot_question`** — a "leading question" that is really a hypothesis in disguise, e.g. *"Isn't it weird that the Callings stopped right when the sapphire appeared? Almost like they're connected, right?"* This has a question mark (looks like `plot_question`) but is actually advancing a claim (`theory`).
+Some posts sit between two labels. My rule is to label by the post's **main purpose**, not its punctuation.
 
-**Rule for annotation:** if the post's main purpose is to **propose or defend an explanation**, label it `theory`, even if it's phrased as a question. Reserve `plot_question` for posts that are genuinely seeking a fact the asker doesn't know and isn't speculating about. A secondary edge case is **`rant_rave` vs `theory`** (an emotional post that also makes a claim) — label by the dominant intent: if removing the emotion leaves a real argument, it's `theory`; if removing the emotion leaves nothing, it's `rant_rave`.
+1. **`theory` vs `plot_question` — a question that is really a theory.**
+   *"How did the Major know that the passengers' minds were connected as soon as they landed? ... This suggests that the government was involved."*
+   It has a question mark but it's arguing a point. → If the post is making a claim, label `theory`; if it just wants a fact, label `plot_question`.
+
+2. **`rant_rave` vs `plot_question` — a complaint shaped like a question.**
+   *"Why is the casting on this show so terrible?"*
+   It isn't really asking for information, it's venting. → `rant_rave`.
+
+3. **`theory` vs `rant_rave` — an opinion that also makes a claim.**
+   *"I believe Jared kinda wanted to have his cake and eat it too: be with Lourdes but still love Michaela."*
+   → If removing the emotion still leaves a real argument, label `theory`; if it leaves nothing, label `rant_rave`.
+
+When I hit one of these while labeling, I wrote the reason in a `notes` column so I'd stay consistent.
 
 ---
 
 ## Data collection plan
 
-**Sources:**
-- **r/Manifest (Reddit)** — primary source; richest mix of all three labels in episode-discussion and theory threads.
+All examples come from **Reddit** (r/Manifest and related Manifest threads).
 
-**Target volume:** **200+ examples total, ~67 per label** to keep classes balanced for stratified splitting.
-
-**If a label is underrepresented after 200 examples:** `theory` is the easiest to over-collect and `plot_question` the hardest, so if `plot_question` lags I'll **targeted-collect** from IMDb/Netflix episode-comment threads and Reddit "Question" flairs/megathreads, which are dense with factual questions. If a label still can't reach a usable floor (~50), I'll down-sample the over-represented classes so the training set stays roughly balanced and note the final per-class counts in the README.
+I aimed for 200+ examples, roughly balanced across the three labels. If a label was running short, I searched question and theory threads specifically to fill it. Final counts: `plot_question` 72, `rant_rave` 70, `theory` 68 (210 total).
 
 ---
 
 ## Evaluation metrics
 
-Accuracy alone is not enough here because the classes may be mildly imbalanced and, more importantly, because the cost of different confusions is not uniform (mislabeling a `theory` as a `plot_question` matters more than a minor `rant_rave` slip). I will use:
+Accuracy alone isn't enough, because the classes aren't perfectly balanced and some mistakes matter more than others (mixing up `theory` and `plot_question` is worse than a small `rant_rave` slip). I'll use:
 
-- **Macro-averaged F1** as the headline metric — it weights each class equally, so a model that nails the easy `rant_rave` posts but fails on the rarer/harder `theory`↔`plot_question` boundary is correctly penalized.
-- **Per-class precision and recall** — to see *which* label is failing and in which direction (e.g. low `theory` recall = theories leaking into other classes).
-- **Confusion matrix** — to confirm whether errors concentrate on the predicted hard edge (`theory` ↔ `plot_question`), which validates whether my label definitions are doing their job.
+- **Macro-F1** as the main metric — it treats all three classes equally.
+- **Per-class precision and recall** — shows which label is failing and in which direction.
+- **Confusion matrix** — shows whether errors cluster on the `theory` ↔ `plot_question` boundary.
 
-I'll report all three for both the fine-tuned model and the Groq baseline.
+I'll report these for both the fine-tuned model and the Groq baseline.
 
 ---
 
 ## Definition of success
 
-For this tool to be **genuinely useful** — e.g. auto-tagging posts in the subreddit so theory-hunters can filter to `theory` and mods can route `plot_question` posts to a help thread — it needs to be reliable enough that humans only spot-correct rather than re-label everything.
-
-- **Good enough for deployment:** **~0.80 macro-F1**, with no single class below ~0.70 recall. At that level the tool can auto-tag with light human review and still save real effort.
-- **Baseline expectation:** the fine-tuned DistilBERT should **beat the zero-shot Groq baseline** on macro-F1; if it doesn't, that's a finding worth analyzing (likely too few examples on the hard boundary).
+This tool would be useful for auto-tagging posts — for example, so fans can filter to theories or route confused viewers to a help thread. To trust it with only light human review, I'd want about **0.80 macro-F1**, with no class below ~0.70 recall. I also expect the fine-tuned model to beat the zero-shot Groq baseline; if it doesn't, that's a result worth analyzing.
 
 ---
 
-## Label stress-testing (pre-annotation)
+## Label stress-testing
 
-Before annotating, I'll give an LLM my three definitions **and the `theory`↔`plot_question` edge case**, and ask it to generate 5–10 posts that sit *on* that boundary (leading questions, emotional theories). If I can't cleanly classify its output using my "dominant intent" rule, my definitions are too loose and I'll tighten them — most likely by adding the explicit "phrased as a question but proposing an explanation → `theory`" clause (already reflected above) before touching the real 200.
+Before labeling everything, I gave an AI my definitions and edge cases and asked it to write posts that sit on the `theory` ↔ `plot_question` boundary. The posts I couldn't label cleanly showed me where to tighten my rules — that's where the "label by main purpose" rule came from.
 
 ## Annotation assistance
 
-I **will** use an LLM to **pre-label** batches before reviewing every example myself; I am the final annotator on 100% of examples. To track this for the AI-usage disclosure, my CSV will include a `pre_labeled` column (model name + whether I changed its label), so I can report how many pre-labels I accepted vs. corrected. No example enters the dataset without my manual confirmation.
+I labeled every example myself. For disclosure: I used an AI assistant to help clean up CSV formatting and to flag borderline posts for me to re-check, but I made the final label decision on every post.
 
-## Failure analysis (post-evaluation)
+## Failure analysis
 
-After evaluation, I'll take the notebook's list of wrong predictions (Section 4 prints them with true/predicted/confidence) and ask an AI tool to **identify error patterns** — e.g. "are most errors `theory` predicted as `plot_question`?", "do errors cluster on short posts or low-confidence cases?". I will then **verify each claimed pattern myself** by reading the actual misclassified posts before writing it into the README, so the write-up reflects real, checked patterns rather than the model's unverified summary.
+After evaluation, I'll take the notebook's list of wrong predictions and ask an AI to spot patterns (e.g. "are most errors `theory` predicted as `plot_question`?"). Then I'll check those patterns against the actual posts myself before writing them into the README.

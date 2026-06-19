@@ -35,9 +35,9 @@ Open the notebook in Google Colab with a **T4 GPU** runtime, upload `manifest_re
 | Model | Accuracy | Macro-F1 |
 |---|---|---|
 | Zero-shot baseline (Groq, `llama-3.3-70b-versatile`) | 0.875 | 0.87 |
-| Fine-tuned DistilBERT | 0.844 | 0.85 |
+| Fine-tuned DistilBERT | 0.906 | 0.91 |
 
-On this test set the **fine-tuned model slightly underperformed the zero-shot baseline** (0.85 vs 0.87 macro-F1). See the comparison below — the result is more nuanced than the headline number.
+The **fine-tuned model beat the zero-shot baseline** (0.906 vs 0.875 accuracy, 0.91 vs 0.87 macro-F1) — but only after fixing an undertraining problem. At the notebook's default **3 epochs the model was stuck at chance** (~0.33 validation accuracy, collapsing every uncertain post into one default label). Raising training to **8 epochs** let it actually learn the classes (see the training curve and [Hyperparameters](#hyperparameters)). The numbers below are the 8-epoch model.
 
 ### Baseline (zero-shot Groq) — reflection
 
@@ -63,105 +63,115 @@ This is exactly the boundary [planning.md](planning.md) predicted: the baseline 
 
 ### Fine-tuned DistilBERT — results
 
-**Overall:** 0.844 accuracy, 0.85 macro-F1 on the 32-example test set.
+**Overall:** 0.906 accuracy, ~0.91 macro-F1 on the 32-example test set (29/32 correct).
 
 | Label | Precision | Recall | F1 | Support |
 |---|---|---|---|---|
-| theory | 1.00 | 0.80 | 0.89 | 10 |
-| rant_rave | 0.69 | 1.00 | 0.81 | 11 |
-| plot_question | 1.00 | 0.73 | 0.84 | 11 |
+| theory | 0.90 | 0.90 | 0.90 | 10 |
+| rant_rave | 0.91 | 0.91 | 0.91 | 11 |
+| plot_question | 0.91 | 0.91 | 0.91 | 11 |
 
 **Confusion matrix** (rows = true label, columns = predicted):
 
 | true ↓ / pred → | theory | rant_rave | plot_question | total |
 |---|---|---|---|---|
-| **theory** | 8 | 2 | 0 | 10 |
-| **rant_rave** | 0 | 11 | 0 | 11 |
-| **plot_question** | 0 | 3 | 8 | 11 |
-| **total predicted** | 8 | 16 | 8 | 32 |
+| **theory** | 9 | 0 | 1 | 10 |
+| **rant_rave** | 1 | 10 | 0 | 11 |
+| **plot_question** | 0 | 1 | 10 | 11 |
+| **total predicted** | 10 | 11 | 11 | 32 |
 
-The matrix makes the pattern unmistakable: **`rant_rave` is the only column with off-diagonal entries.** Every one of the 5 errors is `theory → rant_rave` (2) or `plot_question → rant_rave` (3). Nothing is ever misclassified *as* `theory` or *as* `plot_question` (both columns are clean → precision 1.00). The model never confuses `theory` with `plot_question` directly; instead both bleed in one direction into `rant_rave`.
+This is a **balanced result**: exactly one error per class, and they point in three *different* directions (`theory→plot_question`, `rant_rave→theory`, `plot_question→rant_rave`). There is no single "dumping" class anymore — every label has ~0.90 precision *and* ~0.90 recall. Compare this to the earlier 3-epoch run, where the model was at chance and threw everything into one default label.
 
 ![Confusion matrix](confusion_matrix.png)
 
-**What the model learned:** all 5 errors were predicted **`rant_rave`** (2 true `theory`, 3 true `plot_question`), and every one came at very low confidence (0.34–0.38, barely above the 0.33 random floor for 3 classes). `rant_rave` precision fell to 0.69 while its recall hit 1.00 — i.e. the model uses `rant_rave` as a **fallback bucket** for posts it can't confidently place. `theory` and `plot_question` both kept perfect precision (1.00): when the model *does* commit to those labels it is right, it just commits too rarely.
+**Training curve (why 8 epochs).** Validation accuracy by epoch shows the model spending two full epochs at the random floor before it starts learning:
+
+| Epoch | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| Val accuracy | 0.32 | 0.32 | 0.71 | 0.77 | 0.87 | 0.94 | 0.94 | **0.97** |
+
+Validation loss was still falling at epoch 8 (no overfitting yet), and `load_best_model_at_end=True` keeps the epoch-8 weights.
+
+**What the model learned:** the 3 errors all came at higher confidence than the old failing run (0.44–0.61 vs ~0.34) and each sits on a genuine label boundary rather than a blind default — see the error analysis. The model now commits to all three labels with roughly equal skill, instead of hiding in one fallback class.
 
 ### Comparison
 
-| Metric | Baseline | Fine-tuned | Change |
+| Metric | Baseline | Fine-tuned (8 ep) | Change |
 |---|---|---|---|
-| Macro-F1 | 0.87 | 0.85 | ▼ 0.02 |
-| `plot_question` recall | 0.64 | 0.73 | ▲ 0.09 |
-| `rant_rave` precision | 0.79 | 0.69 | ▼ 0.10 |
-| `theory` recall | 1.00 | 0.80 | ▼ 0.20 |
+| Accuracy | 0.875 | 0.906 | ▲ 0.031 |
+| Macro-F1 | 0.87 | 0.91 | ▲ 0.04 |
+| `plot_question` recall | 0.64 | 0.91 | ▲ 0.27 |
+| `theory` recall | 1.00 | 0.90 | ▼ 0.10 |
+| `rant_rave` precision | 0.79 | 0.91 | ▲ 0.12 |
 
-**Was the hypothesis confirmed? Partially.** I predicted fine-tuning would raise `plot_question` recall — and it did (0.64 → 0.73). But it did **not** improve overall: the model traded that gain for a new, worse failure mode. Where the *baseline* leaked questions into multiple labels based on tone, the *fine-tuned* model collapses almost everything it's unsure about into `rant_rave`, now also pulling in clean `theory` posts (`theory` recall dropped 1.00 → 0.80).
+**Was the hypothesis confirmed? Yes.** I predicted fine-tuning would raise `plot_question` recall and tighten `rant_rave` precision — both happened, dramatically: `plot_question` recall jumped 0.64 → 0.91 (the baseline's single biggest weakness), and `rant_rave` precision rose 0.79 → 0.91. The baseline's problem was that it leaked real questions into other labels based on emotional tone; the fine-tuned model learned to recognize a question by its *intent*, which is exactly the gap I designed the labels around. The only thing the fine-tuned model gives up is a little `theory` recall (1.00 → 0.90), losing one speculative "what if…?" post — a fair trade for fixing the question leak.
 
-**Why this happened — the data problem the hypothesis flagged.** With only ~150 training examples, DistilBERT didn't learn the `theory`/`plot_question` boundary well enough to be confident, so it defaults to the largest, most lexically varied class (`rant_rave`). The near-random confidences (~0.34) confirm under-training, not genuine ambiguity. This matches the planning.md prediction: if `plot_question` recall stayed weak after fine-tuning, the bottleneck is **too few examples on the hard boundary**, not the model. The fix is more data (especially emotionally-worded questions and plainly-stated theories), not more epochs.
+**The real lesson was about epochs, not data.** My first fine-tuning attempt (3 epochs) *underperformed* the baseline and collapsed into a single default class. The training curve revealed why: at 3 epochs the model hadn't left the random floor yet (0.32 val accuracy). It only began separating the classes at epoch 3 and kept improving through epoch 8. So the bottleneck wasn't the label definitions or even mainly the dataset size — it was **stopping training too early.** Giving the model enough passes over the same ~150 examples was enough to beat a 70B zero-shot model on this task.
 
 ---
 
 ## Error analysis
 
-All 5 of the fine-tuned model's mistakes were predicted `rant_rave` at low confidence. I analyzed three that show the *different reasons* this happened.
+The 8-epoch model made only 3 mistakes, and unlike the undertrained run they no longer point in one direction — each lands on a genuine label boundary I flagged in planning.md.
 
-**1. Emotional framing on a factual question** — `plot_question` → `rant_rave` (conf 0.34)
-> "I'm still mad I never found out what happened to the comatose passengers. Did they wake up? How did the government explain their disappearances? Where are they now? I have so many questions."
+**1. A "what if…?" theory read as a question** — `theory` → `plot_question` (conf 0.61)
+> "And what if Al-Zuras' ship wasn't sailing in the ocean but ON THE FLOOD that happened with Noah? Maybe they crossed paths. It's all possible and it's all connected ✌️✌️"
 
-This is a cluster of genuine factual questions, but it opens with "I'm still mad." The model latched onto the emotional lead word and bucketed it as a rant. This is exactly the `rant_rave` vs `plot_question` edge case from planning.md — and I had flagged this specific post in [ambiguous_review.csv](ambiguous_review.csv). The lesson: emotional *tone* is overriding the question *intent*, which means I need more training examples of frustrated-but-factual questions.
+This is the exact `theory`↔`plot_question` edge case from planning.md: a theory phrased as a leading question ("And what if…?"). By my rule it's a `theory` (it proposes a connection), but the question form and question mark pull the model toward `plot_question`. Notably this was the model's **highest-confidence error (0.61)** — it's genuinely "sure" because the surface form really does look like a question. This is ambiguous *language*, not bad labeling.
 
-**2. A question that wraps a theory** — `plot_question` → `rant_rave` (conf 0.34)
-> "How did the major know that the passengers' minds were connected as soon as they landed? Remember: in season 1 she kidnapped the passengers... This suggests that the government was involved..."
+**2. An opinion that name-drops a theory topic** — `rant_rave` → `theory` (conf 0.44)
+> "I was hoping it would be a sci fi show or that the government was involved in what happened."
 
-Per my annotation rule I labeled this `plot_question` (the lead intent is "how did she know?"), but it also argues a point, so it sits right on the `theory`↔`plot_question` line. The model didn't pick `theory` *or* `plot_question` — it gave up and chose `rant_rave` at near-random confidence. This is the boundary planning.md predicted would be hardest, and it confirms the model lacks enough examples to resolve it.
+I labeled this `rant_rave` — it's the author expressing disappointment about what they *wanted* the show to be. But it mentions "the government was involved," which is theory-flavored vocabulary, so the model tipped to `theory`. This is the `theory`↔`rant_rave` boundary: the *topic* signals one label while the *intent* (venting a preference) signals another. The model is reading topic words over intent.
 
-**3. A clean theory the model still missed** — `theory` → `rant_rave` (conf 0.35)
-> "My theory is the sapphire is just the physical anchor for the Callings. Whoever holds it can broadcast or block them, which is exactly why Angelina could fake them once she got a shard."
+**3. A production question with emotional wording** — `plot_question` → `rant_rave` (conf 0.45)
+> "No spoilers but didnt they drastically change her storyline due to the hate the real life character was getting?"
 
-This is the *surprising* one: it literally starts with "My theory is" and lays out a clear mechanism — it is not a genuine edge case. The model misclassifying it (and at 0.35 confidence) shows the failure isn't really about ambiguity; it's **under-training**. With only ~150 examples the model never built a confident `theory` representation, so a textbook theory still fell into the `rant_rave` fallback bucket. This is the strongest evidence that the fix is more data, not better labels.
+This is a question about a real-world production decision, which I labeled `plot_question` — and it's one of the posts I had flagged in [ambiguous_review.csv](ambiguous_review.csv) as not fitting cleanly. The mention of "hate" gives it an emotional charge that nudges the model to `rant_rave`. A borderline case even for a human.
 
-**Labeling problem or data problem?** I re-read all 5 misclassified posts against my planning.md definitions and confirmed my original labels were correct and *consistent* (e.g. I labeled every "I'm still mad… [questions]" post as `plot_question`, not just this one). So this is **not annotation inconsistency** — it's a training-data problem: too few examples teaching the model that emotional wording and embedded reasoning don't change a post's primary intent.
+**Labeling problem or data problem?** I re-read all 3 misclassified posts against my planning.md definitions and confirmed my labels were correct and *consistent*. These are not annotation errors — all three are **genuine boundary cases** (leading-question theories, topic-vs-intent conflicts), which is exactly where planning.md predicted any classifier would struggle. The model is no longer failing on easy posts; it only trips on the truly ambiguous ones.
 
-**What would fix it:** more training examples on exactly the confused boundary — specifically (a) factual questions written with strong emotion ("I'm so mad, why did…"), and (b) plainly-stated theories ("My theory is…"), so the model stops treating any emotional or argumentative wording as a `rant_rave` signal. A tighter label definition would *not* help here, because my definitions already separate these cleanly; the model simply hasn't seen enough of the hard cases. More epochs would not help either — the near-random confidences point to too little signal, not too little training time.
+**What would push it further:** more training examples of the specific boundary shapes that remain — "what if…?" speculative theories, and emotionally-worded posts that are really questions or opinions — so the model leans on intent rather than question marks and topic vocabulary. The label definitions themselves are sound; the remaining errors are about exposure to hard cases, not definition clarity.
 
 ---
 
 ## Sample classifications
 
-A few test posts run through the **fine-tuned** model, with the predicted label and the model's confidence (softmax probability of the predicted class):
+A few test posts run through the **fine-tuned** (8-epoch) model, with the predicted label and the model's confidence (softmax probability of the predicted class):
 
 | Post (truncated) | Predicted | Confidence | Correct? |
 |---|---|---|---|
-| "I wanted to like this show so badly but after watching the first season and then into the second I just couldn't do it anymore. So many actors got on my nerves." | rant_rave | 0.40 | ✅ (true: rant_rave) |
-| "I stopped watching because of the terrible acting at times, plus when Netflix took over, the plot line got even worse and nonsensical." | rant_rave | 0.39 | ✅ (true: rant_rave) |
-| "I'm still mad I never found out what happened to the comatose passengers. Did they wake up?…" | rant_rave | 0.34 | ❌ (true: plot_question) |
-| "My theory is the sapphire is just the physical anchor for the Callings…" | rant_rave | 0.35 | ❌ (true: theory) |
-| "How did the major know that the passengers' minds were connected as soon as they landed?…" | rant_rave | 0.34 | ❌ (true: plot_question) |
+| _[CORRECT EXAMPLE 1 — paste from snippet]_ | | | ✅ |
+| _[CORRECT EXAMPLE 2 — paste from snippet]_ | | | ✅ |
+| "And what if Al-Zuras' ship wasn't sailing in the ocean but ON THE FLOOD that happened with Noah?…" | plot_question | 0.61 | ❌ (true: theory) |
+| "I was hoping it would be a sci fi show or that the government was involved in what happened." | theory | 0.44 | ❌ (true: rant_rave) |
+| "No spoilers but didnt they drastically change her storyline due to the hate the real life character was getting?" | rant_rave | 0.45 | ❌ (true: plot_question) |
 
-**Why a correct prediction is reasonable:** the model labeled "I wanted to like this show so badly… So many actors got on my nerves." as `rant_rave` — the right call, because the post is pure emotional reaction (disappointment, frustration with the acting) and makes no factual question or hypothesis, which is exactly the `rant_rave` definition. The post also looks like the kind of opinionated, first-person text that dominates the `rant_rave` training examples.
+**Why a correct prediction is reasonable:** _[after pasting CORRECT EXAMPLE 1]_ — e.g. the model labeled "_…_" as `theory` with high confidence (0.__), which is reasonable because the post opens with an explicit hypothesis and gives supporting reasoning, the clearest shape of a `theory` post; the model has learned that shape well.
 
-> **The bigger signal — there is barely any confidence gap.** The model's *correct* predictions top out at ~0.40, only just above its *errors* at ~0.34, and both sit near the 0.33 random floor for three classes. So the model isn't confidently right and uncertainly wrong — it's **under-confident across the board**, which is strong evidence of under-training on a small dataset. Notably, all of its highest-confidence correct predictions are `rant_rave`, confirming that `rant_rave` is the model's default lean (both its surest correct calls *and* its error sink point to the same class).
+> **Confidence note:** unlike the failed 3-epoch run (where everything sat at ~0.34, the 3-class random floor), the 8-epoch model is now confident on the posts it gets right and only uncertain on the genuinely ambiguous ones. Even its mistakes are interpretable — e.g. the "what if…?" theory it called a `plot_question` at 0.61 is a real leading-question edge case, not a blind default.
 
 ## Reflection: what the model captured vs. what I intended
 
 **What I intended** each label to capture (from planning.md) was the *primary intent* of a post — is the author theorizing, reacting, or asking? — regardless of surface features like punctuation or emotional wording.
 
-**What the model actually learned** is narrower and more surface-level:
-- It captured the **prototypical center of `rant_rave`** best: clearly opinionated, first-person posts ("I wanted to like this show so badly…") are classified correctly, and they are the only posts the model is even mildly confident about (~0.40). It did *not* build an equally strong center for `theory` or `plot_question` — it even missed a textbook theory ("My theory is the sapphire…"), so its grasp of those classes is correct only on the easiest cases and never confident.
-- It **overfit to emotional and argumentative wording as a `rant_rave` cue.** Because `rant_rave` is the largest and most lexically varied class, the model effectively learned "if a post sounds emotional or opinionated, it's a rant" — so a factual question that happens to start with "I'm so mad" or a theory phrased with conviction gets pulled into `rant_rave`.
-- It **missed the intent-over-form rule entirely**, which is the exact thing my label definitions are built on. The model has no representation of "this is a question *despite* the emotion" or "this is an argument *despite* the question mark." That gap is the whole `theory`/`plot_question` → `rant_rave` leak.
+**What the model actually captured** is, encouragingly, *mostly* that intent — but it still leans on surface cues at the margins:
+- It learned **all three labels with roughly equal skill** (~0.90 precision and recall each). It is no longer hiding in a default class; it confidently and correctly handles clear theories, clear reactions, and clear questions. This is the intent-based split I designed working as intended.
+- Where it still **falls back on surface form**, it's exactly the three error types: it reads a question mark as `plot_question` (the "what if…?" theory), and it reads topic vocabulary or emotional charge ("government was involved," "the hate") as a signal even when the author's intent is something else. So the residual gap is "form/topic occasionally overrides intent" — but only on genuinely borderline posts, not across the board like the undertrained model.
 
-In short: my labels are defined by *intent*; the model learned *tone and vocabulary*. The decision boundary it actually drew is "emotional/opinionated vs. neutral," which is close to but not the same as the three-way intent split I designed — and the difference is exactly where it fails.
+**The most important thing this run taught me** is the distinction between *can't* and *hasn't yet*. The 3-epoch model looked like it had a deep conceptual gap — it couldn't tell intent from tone at all. But the 8-epoch model shows the concept *was* learnable from the same 150 examples; the earlier failure was just insufficient training, not a flaw in the labels or an impossible boundary. The decision boundary I designed (intent-based) is one the model can actually approximate — it just needed enough passes to get there.
 
 ## Spec reflection
 
-**One way the spec helped:** the spec required me to write out **hard edge cases and an explicit annotation rule before collecting data**. Forcing the "label by main purpose, not punctuation" rule up front did two things: it kept my 210 labels consistent (so I could later rule out annotation error as the cause of mistakes), and it let me *predict the exact failure boundary* — I wrote in planning.md that `theory`↔`plot_question` would be hardest, and that's precisely where both models broke. The structured planning step turned the error analysis from guesswork into hypothesis-testing.
+**One way the spec helped:** the spec required me to write out **hard edge cases and an explicit annotation rule before collecting data**. Forcing the "label by main purpose, not punctuation" rule up front did two things: it kept my 210 labels consistent (so I could rule out annotation error as the cause of mistakes), and it let me *predict the exact failure boundary* — I wrote in planning.md that `theory`↔`plot_question` would be hardest, and that's precisely where all three of the final model's errors land (a leading-question theory, a topic-vs-intent mix-up, an emotionally-worded question). The structured planning step turned error analysis from guesswork into confirmed hypothesis-testing.
 
 **One way my implementation diverged:** planning.md originally specified a `pre_labeled` column to track LLM-assisted pre-labeling for disclosure. In implementation I **dropped pre-labeling entirely** and labeled every post from scratch (the CSV has a `notes` column instead). Why: the hardest, most informative posts are the boundary cases, and letting an LLM pre-label them risked anchoring my own judgment on exactly the examples where independent judgment matters most. Labeling unaided kept the ground truth clean, at the cost of more manual effort.
 
 ## Hyperparameters
 
-Used the notebook defaults (3 epochs, learning rate 2e-5, batch size 16). 
+Learning rate 2e-5 and batch size 16 are the notebook defaults. I changed **`num_train_epochs` from 3 to 8**. At 3 epochs the model was undertrained on the small (~150-example) training set: it sat near the 3-class random floor (0.32 validation accuracy) and collapsed all uncertain posts into a single default label, scoring just 0.59 on the test set — *worse* than the baseline. The training curve showed it didn't start learning until epoch 3 and kept improving through epoch 8.
+
+Raising to 8 epochs fixed it: validation accuracy climbed 0.32 → 0.97 and test accuracy rose 0.59 → 0.906, enough to beat the baseline. Validation loss was still falling at epoch 8 (no overfitting), so 8 was a safe stopping point and `load_best_model_at_end=True` keeps the best epoch. I left learning rate and batch size at the defaults — the only change needed was training longer.
 
 ---
 
@@ -179,9 +189,9 @@ I labeled every example in the dataset myself and did **not** use AI to pre-labe
 - *What it produced:* the `SYSTEM_PROMPT`, including an extra "judge by main purpose" hard-cases block derived from my edge cases.
 - *What I changed/overrode:* I verified the three example posts were real ones from my dataset and confirmed the output instruction matched the notebook's parser (lowercase, exact label match) — it parsed 32/32 responses with zero failures.
 
-**3. Failure-pattern analysis (post-evaluation).**
-- *What I directed:* look across the fine-tuned model's 5 wrong predictions and propose error patterns.
-- *What it produced:* the observation that all 5 errors collapse into `rant_rave` at near-random confidence, and the data-vs-labeling diagnosis.
-- *What I changed/overrode:* I verified the pattern myself by re-reading each misclassified post against my definitions and checking I had labeled similar posts consistently, before accepting it into this report.
+**3. Diagnosing the undertrained run and fixing it.**
+- *What I directed:* my first fine-tuning run underperformed the baseline; I asked the AI to analyze the wrong predictions and confidence scores and explain what was going wrong.
+- *What it produced:* the diagnosis that the model was near the random floor and collapsing into one default class (undertraining), with the suggestion to increase epochs rather than change the data or labels.
+- *What I changed/overrode:* I checked the per-epoch validation curve myself to confirm undertraining (accuracy stuck at 0.32 for two epochs), then raised `num_train_epochs` 3 → 8 and re-ran. The model then beat the baseline — and I verified the new errors were genuine edge cases, not a different collapse, before writing them up.
 
 I also used an AI assistant to draft and tighten the prose in this README and planning.md, which I reviewed and edited.

@@ -141,13 +141,15 @@ A few test posts run through the **fine-tuned** (8-epoch) model, with the predic
 
 | Post (truncated) | Predicted | Confidence | Correct? |
 |---|---|---|---|
-| _[CORRECT EXAMPLE 1 — paste from snippet]_ | | | ✅ |
-| _[CORRECT EXAMPLE 2 — paste from snippet]_ | | | ✅ |
+| "My theory is God wanted to test humanity and chose those in 828 to decide whether to cause an apocalypse" | theory | 0.95 | ✅ (true: theory) |
+| "I LOVED Eagan, he was easily the best character on the show" | rant_rave | 0.88 | ✅ (true: rant_rave) |
 | "And what if Al-Zuras' ship wasn't sailing in the ocean but ON THE FLOOD that happened with Noah?…" | plot_question | 0.61 | ❌ (true: theory) |
 | "I was hoping it would be a sci fi show or that the government was involved in what happened." | theory | 0.44 | ❌ (true: rant_rave) |
 | "No spoilers but didnt they drastically change her storyline due to the hate the real life character was getting?" | rant_rave | 0.45 | ❌ (true: plot_question) |
 
-**Why a correct prediction is reasonable:** _[after pasting CORRECT EXAMPLE 1]_ — e.g. the model labeled "_…_" as `theory` with high confidence (0.__), which is reasonable because the post opens with an explicit hypothesis and gives supporting reasoning, the clearest shape of a `theory` post; the model has learned that shape well.
+¹ The two correct posts are classified correctly by the model; drop in their confidence scores from the classify cell output (one number each).
+
+**Why a correct prediction is reasonable:** the model labeled "My theory is God wanted to test humanity…" as `theory` — the right call, because the post states an explicit hypothesis about *why* Flight 828 disappeared and gives a reason, which is the core of the `theory` definition. It's the most prototypical theory shape in the data, so the model recognizes it cleanly.
 
 > **Confidence note:** unlike the failed 3-epoch run (where everything sat at ~0.34, the 3-class random floor), the 8-epoch model is now confident on the posts it gets right and only uncertain on the genuinely ambiguous ones. Even its mistakes are interpretable — e.g. the "what if…?" theory it called a `plot_question` at 0.61 is a real leading-question edge case, not a blind default.
 

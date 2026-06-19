@@ -342,25 +342,31 @@ print("✅ Groq client initialized")
 # skeleton will NOT classify correctly — you must fill it in.
 
 SYSTEM_PROMPT = """
-You are classifying <posts> from <YOUR COMMUNITY>.
-Assign each post to exactly one of the following categories.
+You are classifying posts from the Manifest TV-show fandom on Reddit.
+Manifest is a mystery drama; fans post about the show in different ways.
+Assign each post to exactly one of the following three categories.
 
-<label_1>: <one-sentence definition of label 1>
-Example: "<one example post for label_1>"
+theory: a post that lays out a hypothesis or prediction about the show's mysteries.
+Example: "My theory is God wanted to test humanity and chose those in 828 as a sample set to decide whether to cause an apocalypse"
 
-<label_2>: <one-sentence definition of label 2>
-Example: "<one example post for label_2>"
+rant_rave: a post that is mainly an emotional reaction — liking or disliking a character, relationship, or plot point.
+Example: "This show is so freaking bland and Grace is so annoying that I couldn't even finish season 2."
 
-<label_3>: <one-sentence definition of label 3>
-Example: "<one example post for label_3>"
+plot_question: a factual question about something the viewer missed or found confusing.
+Example: "Why did Cal age when he was gone?"
 
-Respond with ONLY the label name.
-Do not explain your reasoning.
+Rules for hard cases — judge by the post's MAIN PURPOSE, not its punctuation:
+- A question that is really arguing a point is theory, not plot_question.
+- A complaint shaped like a question (venting, not seeking an answer) is rant_rave.
+- An emotional post that still makes a real claim is theory; if removing the emotion leaves nothing, it is rant_rave.
+
+Respond with ONLY the label name — exactly one of: theory, rant_rave, plot_question.
+Do not add punctuation, quotes, or any explanation.
 
 Valid labels:
-<label_1>
-<label_2>
-<label_3>
+theory
+rant_rave
+plot_question
 """
 
 print("Prompt length:", len(SYSTEM_PROMPT), "characters")

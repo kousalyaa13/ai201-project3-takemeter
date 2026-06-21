@@ -1,6 +1,4 @@
-# TakeMeter — Manifest Fandom Post Classifier
-
-**AI201 · Project 3**
+# Manifest Fandom Post Classifier
 
 A text classifier that sorts posts from the *Manifest* TV-show fandom (Reddit) into how the viewer is **engaging** with the show. It compares a fine-tuned DistilBERT model against a zero-shot Groq baseline.
 

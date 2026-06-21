@@ -1,4 +1,4 @@
-# TakeMeter — Planning Document
+# Manifest Fandom Post Classifier — Planning Document
 
 **AI201 · Project 3**
 **Community:** the *Manifest* TV fandom
